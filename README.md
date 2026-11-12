@@ -58,7 +58,7 @@ It applies to any model that calls `linear_input_act`, but only on MPS and only 
 
 Once ComfyUI or ComfyUI-AppleSilicon-FP8 fix this upstream, the node is no longer needed.
 
-Upstream report: (link added after filing)
+Upstream report: [ComfyUI #15799 comment](https://github.com/Comfy-Org/ComfyUI/issues/15799#issuecomment-6805388911)
 
 ## License
 
