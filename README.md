@@ -4,14 +4,16 @@ A ComfyUI custom node for Apple Silicon (MPS). It fixes **flat-black or garbage 
 
 It adds no graph nodes. It patches one function when ComfyUI starts.
 
+> **The real fix is upgrading PyTorch.** The cause is a PyTorch 2.12 MPS bug: unary ops such as `silu` on a column-slice view of a bf16 tensor larger than 2^31 bytes return wrong values. PyTorch 2.13.0 and 2.14.1 fix it. With torch 2.14.1 and no node, the 362-frame H3 run below gives the same result as with the node, checked at step 1. Use this node only if you need to stay on torch 2.12.
+
 ## The bug
 
 H3's MLP calls `comfy.ops.linear_input_act(fc2, fc1(x), "swiglu")`, a fused SwiGLU with an INT8 down-projection. On MPS, this call returns wrong values for **every row** once its input tensor is larger than 2^31 bytes. It raises no error and produces no NaN.
 
 For H3 that input is S × 28,672 bf16, which crosses the limit at S > 37,449 tokens. The error grows through the 50 DiT blocks until the decoded video is black.
 
-- The bug was introduced in ComfyUI #16130 (first released in v0.35.0), found by bisect. It was seen on ComfyUI v0.37.2 and v0.44.2, with ComfyUI-AppleSilicon-FP8 1.4.0 and 1.5.0. As of v0.45.0, ComfyUI master does not split this call on MPS.
-- A plain `F.linear` on MPS with the same sizes is correct, so the fault is in the fused SwiGLU + INT8 path.
+- H3 started hitting it with ComfyUI #16130 (first released in v0.35.0, found by bisect), which routed its MLP through this path on MPS. Seen with torch 2.12.1 on ComfyUI v0.37.2 and v0.44.2, with ComfyUI-AppleSilicon-FP8 1.4.0 and 1.5.0.
+- The INT8 matmul and a plain `F.linear` at these sizes are correct. The wrong values come from the SwiGLU step: `silu(gate)`, where `gate` is a column view into the large input. See the box above.
 
 ## The fix
 
@@ -56,7 +58,7 @@ To turn it off, set `H3_MPS_LARGE_FIX=0` in the environment, or set `"enabled": 
 
 It applies to any model that calls `linear_input_act`, but only on MPS and only above the size limit. It has only been tested with MiniMax H3. On machines without MPS it logs `inactive` and does nothing.
 
-Once ComfyUI or ComfyUI-AppleSilicon-FP8 fix this upstream, the node is no longer needed.
+On torch 2.13 or later, the node isn't needed.
 
 Upstream report: [ComfyUI #15799 comment](https://github.com/Comfy-Org/ComfyUI/issues/15799#issuecomment-6805388911)
 
